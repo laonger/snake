@@ -8,8 +8,8 @@ int one_second = 1000000;
 
 int now_time = 0;
 int time_rate = 100;
-//int speed = 800000;
-int speed = 200000;
+int speed = 800000;
+//int speed = 200000;
 int speed_up = 2000;
 int speed_max = 50000;
 
