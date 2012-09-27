@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <pthread.h>
+#include <sys/ioctl.h>
+#include <errno.h>
 #include <ncurses.h>
+
 
 int one_second = 1000000;
 
@@ -12,8 +14,6 @@ int speed = 800000;
 //int speed = 200000;
 int speed_up = 2000;
 int speed_max = 50000;
-
-pthread_mutex_t mut = PTHREAD_MUTEX_INITIALIZER;
 
 // 一节身体
 typedef struct _body_struct {
@@ -57,9 +57,6 @@ void move_head(SNAKE *snake);
 
 // 移动
 int snake_move(SNAKE *snake, int *food);
-
-// 小蛇自动跑。。。。
-void *auto_run(void *args);
 
 // 来个随机豆儿
 int * random_food(SNAKE *snake);
@@ -107,19 +104,30 @@ int main(int argc, char *argv[])
     //mvaddch(food[1], food[0], '*');
     draw_food(food);
 
-    int error;
-    pthread_t tidp;
-    void * thread_args[2] = { &snake, food };
-    error = pthread_create(&tidp, NULL, auto_run, thread_args);
-    if (error)
-    {
-        endwin();
-        return 1;
-    }
-    
     int d;
-    while ((ch = getch()) != KEY_F(1))
+    int i;
+    now_time=0;
+    while (1)
     {
+        if(ioctl(0,FIONREAD,&i)<0)
+        {
+            printf("ioctl failed, error=%d\n ",errno);
+            break;
+        }
+        if(!i)  // 小蛇自动跑部分
+        {
+            usleep(time_rate);
+            now_time = now_time + time_rate;
+            if (!(now_time < speed))
+            {
+                now_time = 0;
+                if (snake_move(&snake, food))
+                    break;
+            }
+            continue;
+        }
+        now_time = 0;
+        ch = getch();
         if (ch < 258 || ch > 261)
             continue;
         if ( ch+snake.d != KEY_LEFT+KEY_UP )
@@ -128,14 +136,10 @@ int main(int argc, char *argv[])
             if ( d == 1 || d == -1)
                 continue;
         }
-        pthread_mutex_lock(&mut);
-        now_time = 0;
         snake.d = ch;
 
         if (snake_move(&snake, food))
             break;
-        //usleep(speed);
-        pthread_mutex_unlock(&mut);
 
     }
     getch();
@@ -298,7 +302,8 @@ int snake_move(SNAKE *snake, int *food)
         init_pair(3, COLOR_RED, COLOR_BLACK);
         attron(COLOR_PAIR(3));
         draw_whole_snake(snake);
-        mvprintw(LINES/2-1, COLS/2-1, "DEAD");
+        char dead_str[] = "OH, THE POOR LITTLE SNAKE";
+        mvprintw(LINES/2-1, COLS/2-sizeof(dead_str)/2-1, dead_str );
         refresh();
         attroff(COLOR_PAIR(3));
         return 1;
@@ -307,35 +312,6 @@ int snake_move(SNAKE *snake, int *food)
     mvprintw(0, 0, "snake head at: %d, %d;    snake length: %d;    food at: %d, %d;   ", snake->x, snake->y, snake->length, food[0], food[1]);
     refresh();
     return 0;
-}
-
-void *auto_run(void *args)
-{
-    now_time = 0;
-    SNAKE * snake = ((void **)args)[0];
-    int * food = ((void **)args)[1];
-    while (1)
-    {
-        usleep(time_rate);
-        pthread_mutex_lock(&mut);
-        now_time = now_time + time_rate;
-        //mvprintw(0, 40, "%d", now_time);
-        refresh();
-        if (now_time < speed)
-        {
-            pthread_mutex_unlock(&mut);
-            continue;
-        }
-        now_time = 0;
-        if (snake_move(snake, food))
-        {
-            getch();
-            endwin();
-            exit(0);
-        }
-        pthread_mutex_unlock(&mut);
-    }
-    return (void *) 1;
 }
 
 int * random_food(SNAKE *snake)
